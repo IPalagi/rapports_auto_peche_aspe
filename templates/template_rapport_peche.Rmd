@@ -1,0 +1,1162 @@
+---
+author: "Service Connaissance, Direction Régionale des Hauts-de-France, OFB"
+date: "édité le `r Sys.Date()`"
+output:
+  word_document:
+    toc: yes
+    reference_docx: template_style_vf.docx
+fig.width: 7
+fig.height: 6.5
+toc-title: "Sommaire"
+params:
+  code_station: '03112710'
+  annee: '2023'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,warning=FALSE, message=FALSE, dpi = 300)
+```
+
+# Introduction
+
+
+*Dans le cadre de la Directive Cadre sur l'Eau, l'Office Français de la Biodiversité (OFB) suit l'état des peuplements piscicoles des cours d'eau par pêches scientifiques à l'électricité. Ce suivi s'organise principalement autour de 3 réseaux :*
+
+-   *Le RRP (Réseau de Référence Pérenne) : il comprend les stations de pêche considérées comme peu influencées par les activités humaines. Ces stations sont pêchées une fois par an en Hauts-de-France.*
+
+-   *Le RHP (Réseau Hydrobiologique et Piscicoles) : il a un objectif d'amélioration à moyen terme de l'état écologique des cours d'eau. Les stations de ce réseau sont pêchées une fois par an en Hauts-de-France.*
+
+-   *Le RCS (Réseau de Contrôle de Surveillance) : il rassemble les stations considérées comme étant représentatives des masses d'eau qui leur sont associées. Il a un objectif d'amélioration à plus long terme de la qualité écologique des cours d'eau. Les stations de ce réseau sont pêchées une fois tous les deux ans en Hauts-de-France.*
+
+*Les données collectées lors des opérations de pêches électriques sont bancarisées dans l'Application de Saisie des données Piscicoles et Environnementales (ASPE).*
+
+```{r df de travail}
+# filtre des data frame de données aspe sur la station et l'année considérée 
+
+aspe_mei_ope <- aspe_mei_hdf %>%  
+  dplyr::filter(sta_code_sandre == params$code_station
+                & annee == params$annee) %>% 
+  dplyr::mutate(annee = as.factor(annee)) %>% 
+  dplyr::mutate(esp_code_alternatif= as.factor(esp_code_alternatif)) %>% 
+ 
+  unique()
+
+```
+
+---
+title: "Pêche scientifique à l'électricité : `r unique(aspe_mei_ope$sta_libelle_sandre)` (`r params$code_station`)"
+subtitle: "Rapport d'opération `r unique(aspe_mei_ope$ope_id)` du `r unique(substr(aspe_mei_ope$ope_date, 1,10))`"
+---
+
+Le présent document synthétise les résultats d'une opération de pêche scientifique à l'électricité réalisée dans ce contexte. Il s'agit de l'opération **`r unique(aspe_mei_ope$ope_id)`**, réalisée le **`r unique(substr(aspe_mei_ope$ope_date, 1,10))`** à **`r unique(substr(aspe_mei_ope$ope_date, 12,16))`** sur la station **`r unique(aspe_mei_ope$sta_libelle_sandre)`** (**`r unique(aspe_mei_ope$sta_code_sandre)`**) sur le point de prélèvement **`r unique(aspe_mei_ope$pop_code_sandre)`**. Il présente les informations et résultats relatifs à cette opération et replace celle-ci dans l'historique des pêches de la station.
+
+*Toutes les données présentées dans ce rapport sont issues de ASPE.*
+*Ce document est inspiré des rapports de pêche développés par Benoît Richard pour la Direction Régionale de Normandie de l'OFB.*
+
+```{r flextable defaut setting}
+
+set_flextable_defaults(    # options par défaut de l'affichage des tableaux 
+  font.size = 9, theme_fun = theme_vanilla,
+  padding = 6,
+  background.color = "azure",
+  align = "center",
+  big.mark = "",     # pas de virgule pour séparer les milliers 
+  decimal.mark = ",") # virgule comme séparateur décimal 
+```
+
+```{r palette}
+#création d'une palette de couleurs contrastées pour certains graphiques 
+
+palette<-c('#e6194b', '#3cb44b', 'gold', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', 'lawngreen', 'pink2', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', 'darkorchid', '#000000', "darkgreen", "deepskyblue", "khaki3", "salmon", "lightskyblue3", "brown3", "darkslategray", "yellow", "aquamarine3")
+
+```
+
+# Localisation de l'opération
+
+```{r set localisation regionale, results='hide'}
+
+# départements de HDF
+
+map_dpt<-st_read(dsn = "../raw_data/departements.shp", stringsAsFactors = FALSE) # couche shp des départements 
+
+#map_dpt <- load(file="raw_data/dpt.RData")
+
+map_dpt<-map_dpt %>% 
+  dplyr::select(geometry) %>% 
+  st_set_crs(2154)
+
+# Localisation de la station 
+
+map_pop <-aspe_mei_ope %>% 
+  dplyr::select(pop_coordonnees_x, pop_coordonnees_y) %>% 
+  unique()
+
+map_pop_geom<-map_pop %>% 
+  st_as_sf(coords = c("pop_coordonnees_x", "pop_coordonnees_y")) %>% 
+  st_set_crs(2154)
+
+# bassins hydrographiques (artois picardie et seine normandie)
+
+map_bv_hydro <- st_read(dsn = "../raw_data/bv_hydro.shp", stringsAsFactors = FALSE) # couche shp des bv
+
+map_bv_hydro <-map_bv_hydro %>% 
+  dplyr::select(LbBH, geometry) %>% 
+  st_set_crs(2154)
+
+```
+
+##### [Localisation de la station dans les Hauts-de-France]{.underline}
+
+```{r affichage carte régionale, eval=FALSE}
+#plot de la carte en L93 version simple ggplot
+
+ggplot()+
+    geom_sf(data= map_dpt, fill="white", linewidth = 0.5, color="black")+
+    geom_sf(data= map_pop_geom, color="red", size= 3)+
+     geom_sf(data = map_bv_hydro, fill= NA)+
+    #ggtitle("Localisation de la station dans les Hauts-de-France")+
+    theme(plot.title = element_text(hjust = 0.5, size=15))+
+  theme(axis.text.x=element_blank(), 
+      axis.ticks.x=element_blank(), 
+      axis.text.y=element_blank(), 
+      axis.ticks.y=element_blank(),
+  panel.background = element_blank(),
+  plot.title = element_text(color = "royalblue", size=13))
+```
+
+```{r, centroid dpt}
+
+# coordonnées du centroide de la région, pour déterminer le centre du zoom du mapview (prochain chunck)
+
+map_dpt_combine <- st_combine(map_dpt) # fusionner les départements 
+reg_centroid <- st_centroid(map_dpt_combine) # calculer le centroide de la région (les départements fusionnés)
+
+reg_centroidWGS84 <-st_transform(reg_centroid, 4326) # transformer les coordonnées du centroid de la région de Lambert 93 à WGS84 pour une utilisation plus facile de leaflet (déterminer le zoom)
+
+```
+
+```{r map regionale mapview, eval = FALSE}
+
+#plot de la carte en L93 version mapview OpenTopo
+
+mapviewOptions(basemaps = "OpenTopoMap", fgb=FALSE, native.crs = TRUE) 
+leafletOptions((zoomSnap = 0.25))
+
+x<-  mapview(map_bv_hydro, alpha.region = 0.2, layer.name = "Bassins hydrographiques", col.region = c("green", "blue"))+
+  mapview(map_dpt, col.region = "black", alpha.region = 0, color = "black", lwd = 1.5, layer.name = "Departements")+
+ mapview(map_pop_geom, alpha.region = 1, col.region = "red", color = "black", layer.name = "point de prélèvement", cex = 7)
+
+center_coord<- c(st_coordinates(reg_centroidWGS84)[1],st_coordinates(reg_centroidWGS84)[2])  # création d'un vecteur numérique contenant les coordonnées en WGS84 du centroide de la région, pour centrer le mapview 
+
+x<-x@map %>%  setView(center_coord[1], center_coord[2], zoom= 7.5) # centrer le mapview sur la station avec un zoom initial de 7
+
+mapshot(x, remove_controls = c("zoomControl", "layersControl", "homeButton",
+    "drawToolbar", "easyButton", "control"), file="../images/station_regionale.png", vwidth = 650, vheight = 590)
+
+
+```
+
+```{r leaflet map region}
+
+leaflet_dpt <- st_transform(map_dpt, 4326)
+leaflet_bv <- st_transform(map_bv_hydro, 4326)
+map_pop_geomWGS <- st_transform(map_pop_geom, 4326)
+
+center_coord<- c(st_coordinates(reg_centroidWGS84)[1],st_coordinates(reg_centroidWGS84)[2])  # création d'un vecteur numérique contenant les coordonnées en WGS84 du centroide de la région, pour centrer le mapview 
+
+leaflet_map_region <- leaflet (options = leafletOptions(zoomSnap = 0.25, basemaps = "OpenTopoMap")) %>%
+  addProviderTiles(
+    "OpenTopoMap",
+    # give the layer a name
+    group = "OpenTopoMap"
+  ) %>%
+  addCircleMarkers(
+    data = map_pop_geomWGS, fillColor = "red", fillOpacity = 1, color= NA, radius = 6, weight = 1.5,
+    options = leafletOptions(zoomSnap = 0.5)) %>% 
+  addPolygons( data = leaflet_bv, color = NA, fillColor = c("gold", "blue"), weight = 1.5,
+               options = leafletOptions(zoomSnap = 0.5)) %>% 
+  addPolygons( data = leaflet_dpt, fill = NA, color = "black", weight = 1.5,
+               options = leafletOptions(zoomSnap = 0.5)) %>% 
+  addLegend( data = leaflet_dpt, colors = "black", labels = "Départements", opacity = 1) %>% 
+  addLegend(data = leaflet_bv, title = "Bassins hydrographiques", labels = leaflet_bv$LbBH, colors = c("gold", "blue"), opacity = 1) %>% 
+  addLegend(data = map_pop_geomWGS, labels = "Station", colors = "red", opacity = 1) %>% 
+  setView(center_coord[1], center_coord[2], zoom= 8)
+
+mapshot(leaflet_map_region, remove_controls = c("zoomControl", "layersControl", "homeButton",
+    "drawToolbar", "easyButton", "control"), file="../images/station_regionale.png") #, vwidth = 650, vheight = 590)
+```
+
+![](../images/station_regionale.png)
+
+<bv> 
+
+```{r tableau infos station et pop}
+
+# informations sur la station et le point de prélèvement sous forme de tableau 
+
+width(
+  flextable(
+  aspe_mei_ope %>% 
+  dplyr::select(`Code Sandre de la station` = sta_code_sandre, 
+         `Libelle Sandre de la station` = sta_libelle_sandre, 
+         `X (Lambert 93)` = pop_coordonnees_x, 
+         `Y (Lambert 93)` = pop_coordonnees_y, 
+         `Point de prélèvement` = pop_code_sandre,
+         `Département`= dept,
+         `Bassin hydrographique` = bas_libelle_sandre,
+         #`Masse d'eau ` = sta_code_national_masse_eau, # TRop de codes de ME manquants 
+         #`Surface de BV amont` = surface_bv # Trop d'erreurs dans les données de surface 
+         )%>% 
+  unique()
+  ), width = 1)
+
+
+```
+
+##### [Localisation du point de prélèvement poisson]{.underline}
+
+```{r carte vue locale station seule}
+# vue locale de la station 
+
+
+mapviewOptions(basemaps = "OpenStreetMap", fgb=FALSE, native.crs = TRUE) #option de base du mapview :choix de la carte de fond, fgb = FALSE résout le soucis d'affichage des couches avec mapshot 
+
+map_pop_geomWGS <-st_transform(map_pop_geom, 4326) # transformer les coordonnées de la station de Lambert 93 à WGS84 pour une utilisation plus facile de leaflet 
+
+x<-mapview(map_pop_geomWGS, alpha.region = 1, col.region = "red", color = "red", legend= FALSE) #création du mapview de la station 
+
+center_coord<- c(st_coordinates(map_pop_geomWGS)[1],st_coordinates(map_pop_geomWGS)[2])  # création d'un vecteur numérique contenant les coordonnées en WGS84 de la station, pour centrer le mapview 
+
+x<-x@map %>%  setView(center_coord[1], center_coord[2], zoom= 15) # centrer le mapview sur la station avec un zoom initial de 15 
+
+mapshot(x, remove_controls = c("zoomControl", "layersControl", "homeButton",
+    "drawToolbar", "easyButton", "control"), file="../images/station_locale_seule.png", vwidth = 500, vheight = 300) # enregistrer en png un screenshot de la vue initiale du mapview 
+
+
+
+```
+
+![](../images/station_locale_seule.png)
+
+```{r import shp stations autres, results='hide'}
+# importation des shp des autres types de stations de suivie (hydro + RNT + hydrobio + Carhyce)
+
+station_rnt<-st_read(dsn = "../raw_data/RNT.shp", stringsAsFactors = FALSE) # couche shp des stations RNT de hdf 
+station_carhyce<-st_read(dsn = "../raw_data/stations_carhyce_ofb.shp", stringsAsFactors = FALSE) # couche shp des stations Carhyce de hdf 
+station_hydrobio<-st_read(dsn = "../raw_data/stations_hydrobio.shp", stringsAsFactors = FALSE) # couche shp des stations hydrobio de hdf 
+station_hydro<-st_read(dsn = "../raw_data/stations_hydro.shp", stringsAsFactors = FALSE) # couche shp des stations hydro de hdf 
+
+station_rnt<-station_rnt %>%  
+  unique() %>% 
+  dplyr::select(geometry) %>%  # ne conserver que la géométrie
+  st_set_crs(2154) %>%  # annonce du référentiel initial (Lambert 93)
+  st_transform(4326) # reprojection en WGS84
+
+station_carhyce <- station_carhyce %>% 
+  unique() %>% 
+  dplyr::select(geometry) %>%  # ne conserver que la géométrie
+  st_set_crs(2154) %>%  # annonce du référentiel initial (Lambert 93)
+  st_transform(4326) # reprojection en WGS84
+
+station_hydrobio <- station_hydrobio %>% 
+  unique() %>% 
+  dplyr::select(geometry) %>%  # ne conserver que la géométrie
+  st_set_crs(2154) %>%  # annonce du référentiel initial (Lambert 93)
+  st_transform(4326) # reprojection en WGS84
+
+station_hydro<- station_hydro %>% 
+  unique() %>% 
+  dplyr::select(geometry) %>% # ne conserver que la géométrie
+  st_set_crs(2154) %>%  # annonce du référentiel initial (Lambert 93)
+  st_transform(4326) # reprojection en WGS84
+
+
+```
+
+<bv> 
+
+##### [Autres stations de suivi autour du point de prélèvement poisson (stations **RNT** (températures de l'eau), stations **Carhyce** OFB (hydromorphologie), stations d'**hydrobiologie**, stations de **débits** DREAL)]{.underline}
+
+```{r carte vue locale avec autres stations, results='hide'}
+
+# création d'une carte centrée sur la station de pêche, avec les autres types de stations à environ 3km à la ronde 
+
+mapviewOptions(basemaps = "OpenTopoMap", fgb=FALSE, native.crs = TRUE, legend.opacity = 0.7)
+
+x2<-
+    mapview(station_rnt, 
+            alpha.region = 0.6, col.region = "orange", color = "black", 
+            layer.name = "RNT", cex= 9)+
+    mapview(station_carhyce, 
+            alpha.region = 0.7, col.region = "purple", color = "black", 
+            layer.name = "Carhyce", cex= 8)+
+    mapview(station_hydrobio, 
+            alpha.region = 0.6, col.region = "gold", color = "black", 
+            layer.name="Hydrobiologie", cex= 7)+
+    mapview(station_hydro, 
+            alpha.region = 0.8, col.region = "blue", color = "black", 
+            layer.name = "Hydrométrie", cex= 6)+
+     mapview(map_pop_geomWGS, 
+            alpha.region = 1, col.region = "red", color = "black", 
+            layer.name = "Pêche", cex= 6)
+
+x2<-x2@map %>%  
+  setView(center_coord[1], center_coord[2], zoom= 12) # centrer le mapview sur la station avec un zoom initial de 12 
+
+mapshot(x2, remove_controls = c("zoomControl", "layersControl", "homeButton",
+    "drawToolbar", "easyButton", "control"), file="../images/vue_locale_toutes_stations.png", vwidth = 570, vheight = 300) # enregistrer en png un screenshot de la vue initiale du mapview 
+
+```
+
+![](../images/vue_locale_toutes_stations.png)
+
+\newpage
+
+# Organisation de la pêche
+
+## Réseau de suivi et protocole
+
+##### [Réseau de suivi et protocole de l'opération `r unique(aspe_mei_ope$ope_id)`]{.underline}
+
+```{r protocole de peche}
+
+# information sur le protocole de pêche 
+## méthode moche, voir comment rendre ça plus élégant :(
+
+df<-aspe_mei_ope %>% 
+  dplyr::mutate(nb_passage = case_when (pro_libelle == "Pêche complète à un ou plusieurs passages" 
+                                    ~ as.character(max(pas_numero))
+     ,pro_libelle != "Pêche complète à un ou plusieurs passages" ~ "Non concerné")) %>% 
+  dplyr::mutate(nb_pt_strd = case_when (grp_tgp_id == 1 ~ as.character(grp_nombre), 
+                                 is.na(grp_tgp_id) ~ "Non concerné")) %>% 
+  dplyr::mutate(nb_pt_comp = case_when (grp_tgp_id == 2 ~ as.character(grp_nombre),
+                                        grp_tgp_id == 1 ~ "0",
+                                 is.na(grp_tgp_id) ~ "Non concerné")) %>% 
+  dplyr::select(obj_libelle, 
+         pro_libelle, 
+         mop_libelle,
+         nb_passage,
+         nb_pt_strd,
+         nb_pt_comp) %>% 
+  unique()
+
+ 
+  df2 <- data.frame(`Réseau de suivi` = unique(df$obj_libelle), 
+         `Protocole de pêche` = unique(df$pro_libelle), 
+         `Moyen de prospection` = unique(df$mop_libelle),
+         `Nombre de passages` = unique(df$nb_passage),
+         `Nombre de points standards` = unique(na.omit(df$nb_pt_strd)),
+         `Nombre de points complémentaires` = unique(na.omit(df$nb_pt_comp)),
+         check.names = FALSE)
+         
+  
+
+width(flextable(df2), width = 1.2) # conversion en flextable (mise en forme)
+
+```
+
+##### [Historique des réseaux de suivi et protocoles de la station `r unique(aspe_mei_ope$sta_libelle_sandre)`]{.underline}
+
+```{r historique reseau}
+
+reseau_hist <- aspe_mei_hdf %>% 
+  filter(sta_code_sandre == params$code_station) %>% 
+  mutate(annee = as.factor(annee)) %>% 
+  dplyr::mutate(obj_libelle = case_when(
+    obj_libelle %in% c("RHP – Réseau Hydrobiologique Piscicole", 
+                       "RCS – Réseau de Contrôle de Surveillance", 
+                       "RRP – Réseau de Référence Pérenne") ~ substr(obj_libelle, 1,3),
+    (!(obj_libelle %in% c("RHP – Réseau Hydrobiologique Piscicole", 
+                       "RCS – Réseau de Contrôle de Surveillance", 
+                       "RRP – Réseau de Référence Pérenne")) ~ substr(obj_libelle, 1,8) 
+                                        ))) %>% 
+  replace_na(list(obj_libelle = "Inconnu")) %>% 
+  ggplot(aes(x=annee, y=obj_libelle, color=obj_libelle))+
+  geom_vline(xintercept=params$annee, color="red")+
+  geom_point(size=5, show.legend = F)+
+  theme_bw()+
+  theme(axis.text.y = element_text(size=11),
+            #title = element_text(face = 'bold', size=9),
+            #axis.text.x = element_text(angle = 45, hjust=1),
+        axis.text.x = element_blank(),
+        legend.position = "none")+
+  xlab(NULL)+
+  ylab("Réseau de suivi")+
+  scale_color_manual(values=c("RHP"="lightblue",
+                     "RCS"= "gold2",
+                     "RRP"= "lightgreen",
+                     "RNSORMCE" = "purple"))
+```
+
+```{r historique protocole}
+
+protocole_hist <- aspe_mei_hdf %>% 
+  filter(sta_code_sandre == params$code_station) %>% 
+  mutate(annee = as.factor(annee)) %>% 
+  replace_na(list(pro_libelle = "Inconnu")) %>% 
+  ggplot(aes(x=annee, y=pro_libelle, color=pro_libelle))+
+  geom_vline(xintercept=params$annee, color="red")+
+  geom_point(size=5, show.legend = F)+
+  theme_bw()+
+  theme(axis.text.y = element_text(size=11),
+           # title = element_text(face = 'bold', size=9),
+            axis.text.x = element_text(angle = 45, hjust=1))+
+  scale_y_discrete(labels = label_wrap(13))+
+  xlab("Années")+
+  ylab("Protocole")+
+  scale_color_manual(values=c("Pêche par ambiances"="bisque4",
+                     "Pêche complète à un ou plusieurs passages"= "darkgreen",
+                     "Pêche partielle par points (grand milieu)"= "cyan",
+                     "Pêche partielle sur berge" = "cyan3"))
+```
+
+```{r, results='hide'}
+arrange_reseau <- ggarrange(reseau_hist, protocole_hist, heights = c(1,1.6), ncol=1, nrow=2, align = "v", common.legend = FALSE)
+
+ggsave(plot = arrange_reseau, filename = "../images/arrange_pro_res.png", dpi = 300, width = 8, height = 5)
+```
+
+![](../images/arrange_pro_res.png)
+
+## Intervenants
+
+##### [Intervenants de l'opération `r unique(aspe_mei_ope$ope_id)`]{.underline}
+
+```{r intervenants}
+
+width(
+  flextable(
+  aspe_mei_ope %>% 
+  replace_na(list(ope_directeur_peche = "Inconnu")) %>% 
+  dplyr::select(`Opérateur` = operateur_peche, 
+         `Commanditaire` = commanditaire, 
+         `Directeur de pêche`=ope_directeur_peche,
+         `Validateur technique`= validation_technique
+         ) %>% 
+  unique()
+  ),
+  width = 1.5)
+
+```
+
+## Matériel de pêche
+
+##### [Matériel de pêche utilisé pour l'opération `r unique(aspe_mei_ope$ope_id)`]{.underline}
+
+```{r materiel de peche}
+
+width(
+  flextable(
+  aspe_mei_ope %>% 
+  dplyr::select(
+          `Modèle du matériel` = mom_libelle, 
+          `Fabriquant du  matériel` = fam_libelle,
+         `Puissance (en kvA)` = odp_puissance, 
+         `Intensité (en A)`=odp_intensite,
+         `Tension (en V)`= odp_tension,
+         `Nombre d'anodes` = odp_nombre_anodes,
+         `Nombre d'épuisettes` = odp_nombre_epuisettes
+         ) %>% 
+  unique()
+  ),
+  width = 1) 
+
+```
+
+## Conditions environnementales au moment de la pêche
+
+##### [Conditions environnementales le jour de l'opération `r unique(aspe_mei_ope$ope_id)`]{.underline}
+
+```{r conditions environnementales}
+
+width(
+  flextable(
+  aspe_mei_ope %>% 
+  dplyr::select(`Température de l'eau (en °C)` = odp_temperature_instantanee, 
+         `Conductivité (en µS/cm)` = odp_conductivite, 
+         `Conditions hydrologiques`=coh_libelle,
+         #`Débit moyen journalier (en m3)`= odp_debit_moyen_journalier,
+         `Turbidité` = tur_libelle
+         ) %>% 
+  unique()
+  ),
+  width = 1.2) 
+
+```
+
+```{r}
+#historique des conditions hydrologiques 
+
+histo_hydrologie <- aspe_mei_hdf %>% 
+  filter(sta_code_sandre == params$code_station) %>% 
+  mutate(annee = as.factor(annee)) %>% 
+  replace_na(list(coh_libelle = "Inconnu")) %>% 
+  ggplot(aes(x=annee, y= coh_libelle, color=coh_libelle))+
+  geom_vline(xintercept=params$annee, color="red")+
+  geom_point(size=2, show.legend = F)+
+  theme_bw()+
+  theme(axis.text.y = element_text(size=9),
+           # title = element_text(face = 'bold', size=9),
+            axis.text.x = element_text(angle = 45, hjust=1, size = 8),
+                     title = element_text( size=9))+                
+  #scale_y_discrete(labels = label_wrap(13))+
+  xlab("Années")+
+  ylab("Hydrologie")+
+  scale_color_manual(values=c("Basses eaux"="cyan",
+                     "Eaux moyennes"= "blue",
+                     "Hautes eaux"= "darkblue",
+                     "Inconnu" = "grey"))
+
+
+```
+
+```{r}
+#historique des températures 
+
+histo_temp <- aspe_mei_hdf %>% 
+  filter(sta_code_sandre == params$code_station) %>% 
+  mutate(annee = as.numeric(annee)) %>% 
+  drop_na(odp_temperature_instantanee) %>% 
+  ggplot(aes(x=annee, y= odp_temperature_instantanee))+
+  geom_vline(xintercept= as.numeric(params$annee), color="red")+
+  geom_point()+
+  geom_line(linetype = "dashed") + 
+  theme_bw()+
+  theme(axis.text.y = element_text(size=8),
+            title = element_text( size=8))+
+           # axis.text.x = element_text(angle = 45, hjust=1))+
+  #scale_y_discrete(labels = label_wrap(13))+
+  xlab("Années")+
+  ylab("Température 
+de l'eau (°C)")
+```
+
+```{r}
+arrange_condition <- ggarrange(histo_temp, histo_hydrologie, heights = c(1,1.5), ncol=1, nrow=2, align = "v", common.legend = FALSE)
+
+ggsave(plot = arrange_condition, filename = "../images/arrange_condition.png", dpi = 300, width = 7, height = 2.5)
+```
+
+##### [Historique des températures de l'eau et des conditions hydrologiques]{.underline}
+
+![](../images/arrange_condition.png)
+
+# Le peuplement piscicole
+
+*La signification des codes taxons à trois lettres est consultable en Annexe 1.*
+
+## Peuplement de l'opération `r unique(aspe_mei_ope$ope_id)`
+
+##### [Effectifs et tailles médianes des taxons capturés lors de l'opération]{.underline}
+
+```{r set graph effectifs}
+
+effectifs <- aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+           annee == params$annee)  %>% 
+  dplyr::group_by(esp_code_alternatif) %>% 
+  dplyr::summarise(effectif= n()) %>%
+  ungroup() %>% 
+  mutate(esp_code_alternatif=as.factor(esp_code_alternatif)) %>% 
+  ggplot(aes(x=esp_code_alternatif, y=effectif, fill=esp_code_alternatif))+
+  geom_col()+
+  theme_bw()+
+  theme(axis.text.x = element_text(face = 'bold', angle = 45, hjust=1),
+        legend.position = "none",
+       axis.title.y = element_text(size=10))+
+  scale_fill_manual(values= palette)+
+  xlab("Taxons")+
+  ylab("Nombre d'individus capturés")
+
+
+  
+```
+
+```{r set graph densite, eval=FALSE}
+
+densite <-  aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+           annee == params$annee)  %>% 
+  dplyr::group_by(esp_code_alternatif, ope_surface_calculee) %>% 
+  dplyr::summarise(effectif= n()) %>%
+  ungroup() %>% 
+  mutate(densite_km2 = (effectif/ope_surface_calculee)*1000) %>% 
+  mutate(esp_code_alternatif=as.factor(esp_code_alternatif)) %>% 
+  ggplot(aes(x=esp_code_alternatif, y=densite_km2, fill=esp_code_alternatif))+
+  geom_col()+
+  theme_bw()+
+  theme(axis.text.x = element_text(face = 'bold', angle = 45, hjust=1),
+        legend.position = "none",
+        axis.title.y = element_text(size=10))+
+  scale_fill_manual(values= palette)+
+  xlab("Taxons")+
+  ylab("Densité d'individus (au km2)")
+```
+
+```{r set graph tailles médiannes}
+
+tailles <- aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+           annee == params$annee)  %>% 
+  dplyr::group_by(esp_code_alternatif) %>% 
+  dplyr::summarise(taille_med= median(mei_taille)) %>%
+  ungroup() %>% 
+  mutate(esp_code_alternatif=as.factor(esp_code_alternatif)) %>% 
+  ggplot(aes(x=esp_code_alternatif, y=taille_med, fill=esp_code_alternatif))+
+  geom_col()+
+  theme_bw()+
+  theme(axis.text.x = element_text(face = 'bold',angle = 45, hjust=1),
+        legend.position = "none",
+        axis.title.y = element_text(size=10))+
+  scale_fill_manual(values= palette)+
+  xlab("Taxons")+
+  ylab("Taille médiane (en mm)")
+```
+
+```{r set graph poids médian, eval=FALSE}
+
+## ATTENTION : énormément de valeurs manquantes et de 0 dans les poids 
+##-> pourquoi ? Soucis de bancarisation, mauvaise importation de la base aspe ? 
+## => essayer de régler le soucis 
+
+poids <-aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+           annee == params$annee)  %>% 
+  dplyr::mutate(poids_regroupe = case_when(is.na(mei_poids) & !is.na(mei_poids_estime)
+                                                                     ~ mei_poids_estime,
+                                           is.na(mei_poids_estime) & !is.na(mei_poids)
+                                                                     ~ mei_poids,
+                                           is.na(mei_poids_estime) & is.na(mei_poids)
+                                                                     ~ NA)) %>% 
+  dplyr::group_by(esp_code_alternatif) %>% 
+  dplyr::summarise(poids_med= median(poids_regroupe)) %>%
+  ungroup() %>% 
+  mutate(esp_code_alternatif=as.factor(esp_code_alternatif)) %>% 
+  ggplot(aes(x=esp_code_alternatif, y=poids_med, fill=esp_code_alternatif))+
+  geom_col()+
+  theme_bw()+
+  theme(axis.text.x = element_text(face = 'bold'),
+        legend.position = "none",
+        axis.title.y = element_text(size=10))+
+  scale_fill_manual(values= palette)+
+  xlab("Taxons")+
+  ylab("Poids médian (en g)")
+```
+
+```{r affichage graph peuplement}
+
+peuplement_arrange <- ggarrange(effectifs, tailles, nrow = 2, ncol =1) #, poids) pour le moment pas d'affichage du graph de poids, psk vide 
+
+ggsave(plot = peuplement_arrange, file= "../images/peuplement_arrange.png", width = 16, height = 15, units = "cm", dpi = 300)
+```
+
+![](../images/peuplement_arrange.png)
+
+## Historique des peuplements sur la station
+
+##### [Evolution du nombre d'individus pêchés sur la station (pour les taxons pêchés en `r params$annee`)]{.underline}
+
+```{r effectif }
+
+effectif_historique <- aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station & 
+                  esp_code_alternatif %in% aspe_mei_ope$esp_code_alternatif)  %>% 
+  dplyr::group_by(annee, esp_code_alternatif) %>% 
+  dplyr::summarise(effectif= as.integer(n())) %>%
+  ungroup() %>% 
+  complete(annee, esp_code_alternatif) %>% 
+  replace_na(list(effectif = 0)) %>% 
+  dplyr::mutate(esp_code_alternatif=as.factor(esp_code_alternatif)) %>% 
+  dplyr::mutate(annee= as.integer(annee)) %>% 
+  
+  ggplot(aes(x=annee, y=effectif, fill=esp_code_alternatif)) + 
+  geom_vline(xintercept=as.integer(params$annee), color="red")+
+  geom_line(linetype = "longdash", color= "black")+
+  geom_point(size=2, shape= 21, stroke=0.1) +
+  theme_bw()+
+  facet_wrap(~esp_code_alternatif, scales = "free", ncol = 3)+
+  theme(legend.position = "none")+
+  theme(strip.text.x = element_text(size = 7, face= "bold", margin = margin(0,0.6,0,0.6 ,"cm")))+
+  scale_fill_manual(values= palette, drop=FALSE)+
+  xlab("Années")+
+  ylab("Nombre d'individus capturés")
+
+ggsave(plot = effectif_historique, file= "../images/gg_effectif_histo.png", width = 18, height = 19, units = "cm", dpi = 300)
+```
+
+![](../images/gg_effectif_histo.png)
+
+##### [Comparaison des tailles des taxons pêchés en `r params$annee` avec leur distribution historique sur la station]{.underline}
+
+```{r violon plot tailles}
+
+#tailles_historiques <- aspe_mei_hdf %>% 
+ # dplyr::filter(sta_code_sandre == params$code_station) %>% 
+  #dplyr::group_by(esp_code_alternatif) %>% 
+  #dplyr:: summarise(taille_max_histo = max(mei_taille, na.rm = TRUE),
+    #                taille_min_histo = min(mei_taille, na.rm = TRUE),
+     #               taille_med_histo = median(mei_taille, na.rm = TRUE),
+      #              taille_moy_histo = mean(mei_taille, na.rm = TRUE))
+
+aspe_mei_violon <- aspe_mei_hdf %>% 
+   dplyr::filter(sta_code_sandre == params$code_station &
+                   esp_code_alternatif %in% aspe_mei_ope$esp_code_alternatif) %>% 
+  mutate(esp_code_alternatif= as.factor(esp_code_alternatif))
+
+violon_plot <- ggplot(data = aspe_mei_violon, 
+       aes(x=esp_code_alternatif, y= mei_taille, fill=esp_code_alternatif))+
+  geom_point(data = aspe_mei_ope, aes(color = esp_code_alternatif), 
+             size= 1, position = "jitter")+
+  geom_violin(scale = "width", alpha = .4, color="grey50")+
+  stat_summary(fun.y=median, geom="point", shape= 0, size=2.5, fill="black", stroke=1)+
+  stat_summary(data = aspe_mei_ope, fun.y=median, geom="point", shape= 21, size= 2.5, fill= "red", color= "black", stroke = 1)+
+  theme_bw()+
+  theme(axis.text.x = element_text(face = 'bold'),
+        legend.position = "none")+
+  scale_fill_manual(values= palette, drop=FALSE)+
+  scale_color_manual(values= palette, drop=FALSE)+
+  xlab("Taxons")+
+  ylab("Taille (en mm)") 
+
+```
+```{r}
+ggsave(plot = violon_plot, filename = "../images/violon_plot.png", width = 17, height = 14, units = "cm", dpi = 300)
+```
+![](../images/violon_plot.png)
+![](../images/violon_plot_legend_big.png)
+
+```{r richesse spécifique}
+
+df<-aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station) %>% 
+  dplyr::mutate(annee= as.numeric(annee)) 
+
+test<-seq(min(df$annee), max(df$annee), 1)
+
+richesse<-aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station) %>% 
+  dplyr::group_by(annee, esp_code_alternatif) %>% 
+  dplyr::summarise(nb_indiv=n()) %>% 
+  ungroup() %>% 
+  dplyr::group_by(annee) %>% 
+  dplyr::summarise(richesse = as.integer(n())) %>% 
+  dplyr::mutate(annee= as.integer(annee)) %>% 
+  ggplot(aes(x=annee, y=richesse)) +
+  geom_vline(xintercept=as.integer(params$annee), color="red")+
+  geom_line(linetype = "longdash", linewidth = 0.8, color="grey50" )+
+  geom_point(size=1.5) + 
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust=1),
+        axis.title.y = element_text(size=10))+
+  scale_x_continuous(breaks=test, expand = c(0,0.5))+
+  xlab("Années")+
+  ylab("Richesse")
+  
+```
+
+```{r bubble plot effectifs}
+
+df_effectif_hist <- aspe_mei_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station)  %>% 
+  dplyr::group_by(annee, esp_code_alternatif) %>% 
+  dplyr::summarise(effectif= as.numeric(n())) %>%
+  ungroup() %>% 
+  dplyr::mutate(esp_code_alternatif=as.factor(esp_code_alternatif)) %>% 
+  dplyr::mutate(annee = as.factor(annee)) %>% 
+  dplyr::mutate(esp_ope = case_when(esp_code_alternatif %in% aspe_mei_ope$esp_code_alternatif
+                          ~ "oui",
+                !(esp_code_alternatif %in% aspe_mei_ope$esp_code_alternatif)
+                ~ "non" 
+                )) 
+
+nb_tot_indiv <- df_effectif_hist %>% 
+  dplyr::group_by(annee) %>% 
+  dplyr:: summarise(nb_tot = as.numeric(sum(effectif)))
+
+abondance_relat <- df_effectif_hist %>% 
+  dplyr::left_join(nb_tot_indiv, by="annee") %>% 
+  dplyr:: mutate(effectif_relatif = (effectif/nb_tot)*100) %>% 
+  ggplot(aes(x = annee, y = esp_code_alternatif, fill= esp_ope)) + 
+  geom_vline(aes(xintercept= which(levels(annee) == params$annee)), color="red")+
+  geom_point(aes(size = effectif_relatif),alpha=1, shape = 21)+ # création de point de taille selon effectif
+  scale_size(name = "Abondance 
+relative (en %)",
+             range = c(1,7), 
+             limits = c(0,100), 
+             breaks = c(1,20,40,60,80))+ # ajustement de la légende (taille de cercle, valeurs indiquées)
+  theme_bw()+
+  scale_x_discrete(expand = c(0,0.5))+
+  theme(axis.text.x = element_text(angle = 45))+ 
+  theme(axis.text.y = element_text(size = 8, face= "bold"),
+        legend.title = element_text(size=8),
+        axis.text.x = element_blank(),
+        legend.position = "top")+
+  labs(fill = "Taxon pêché (opération)")+
+  xlab(NULL)+
+  ylab("Taxon")+
+  scale_fill_manual(values = c("oui"="darkslategray3",
+                               "non" = "indianred"))
+  #guides(fill = guide_legend(override.aes = list(size=4)))
+  
+```
+
+##### [a) Evolution de l'abondance relative (nombre d'individus pêchés par taxon divisé par le nombre total d'individus pêchés) de tous les taxons pêchés sur l'historique de la station en fonction des années.]{.underline} 
+##### [b) Evolution de la richesse taxonomique (nombre de taxons pêchés) sur la station]{.underline}
+
+```{r arrange abondance et richesse}
+
+arrange_abondance_rich <- ggarrange(abondance_relat, richesse, 
+                                    heights = c(3.5,1), 
+                                    ncol = 1, nrow = 2, 
+                                    align = "v", 
+                                    labels = c("a", "b"), font.label = list(size = 10))
+
+ggsave(plot = arrange_abondance_rich, filename = "../images/arrange_ab_rich.png", width = 17, height = 19, units = "cm", dpi = 300)
+
+```
+
+![](../images/arrange_ab_rich.png)
+
+# L'Indice Poisson Rivière
+
+*L'Indice Poisson Rivière (IPR) est un indicateur piscicole utilisé dans le cadre de la DCE pour caractériser l'état global du peuplement piscicole par rapport à une situation de référence (non altérée). Il est calculé à partir de 7 métriques (présentées en Annexe 2).*
+
+*Plus l'IPR augmente, plus le peuplement piscicole s’écarte d'un peuplement de référence et est donc considéré comme "mauvais". 5 classes de qualité de "Très bon" à "Mauvais" sont attribuées à l'IPR en fonction de sa valeur.*
+
+*Le calcul et l'interprétation de l'IPR sont expliqués plus en détail en Annexe 2.*
+
+## IPR de l'opération `r unique(aspe_mei_ope$ope_id)`
+
+##### [Valeurs (arrondies au centième) de l'IPR et de ses métriques]{.underline}
+
+```{r IPR et met operation}
+
+ df <-  width(flextable(
+  aspe_ipr_hdf %>%
+    dplyr:: filter(sta_code_sandre == params$code_station &
+                     annee == params$annee) %>% 
+    mutate(`IPR` = round(ipr, 2),
+           `Classe de qualité` = cli_libelle,
+           `NER` = round(ner, 2),
+           `NEL` = round(nel, 2),
+           `NTE` = round(nte, 2),
+           `DIT` = round(dit, 2),
+           `DIO` = round(dio, 2),
+           `DII` = round(dii, 2),
+           `DTI` = round(dti, 2)) %>% 
+    select(`IPR`:`DTI`)
+                  ), width = 0.8)
+
+#couleur de la case Classe de qualité en fonction de la classe de qualité :
+
+if (df$body$dataset$`Classe de qualité` == "Très bon"){
+   bg(df, j = "Classe de qualité", bg = "green", part = "body")
+ }
+
+ if (df$body$dataset$`Classe de qualité` == "Bon"){
+   bg(df, j = "Classe de qualité", bg = "yellowgreen", part = "body")
+ }
+
+if (df$body$dataset$`Classe de qualité` == "Moyen"){
+   bg(df, j = "Classe de qualité", bg = "yellow", part = "body")
+ }
+ 
+if (df$body$dataset$`Classe de qualité` == "Médiocre"){
+   bg(df, j = "Classe de qualité", bg = "darkorange", part = "body")
+ } 
+
+if (df$body$dataset$`Classe de qualité` == "Mauvais"){
+   bg(df, j = "Classe de qualité", bg = "red3", part = "body")
+}
+
+```
+
+<br>
+
+##### [Données de contexte utilisées pour le calcul de l'IPR]{.underline}
+
+```{r donnes contexte IPR partie 1}
+
+
+  width(
+    flextable(
+      aspe_ipr_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+                  annee == params$annee) %>% 
+  dplyr::select(`Unité hydrographique` = opi_param_bassin,
+                `Surface de bassin versant amont (en km2)` = opi_param_sbv,
+                `Distance à la source (en km)` = opi_param_ds,
+                `Altitude (en m)` = opi_param_alt,
+                `Température moyenne en Janvier (en °C)` = opi_param_tjanvier,
+                `Température moyenne en Juillet (en °C)` = opi_param_tjuillet,
+                `Surface prospectée (en m2)` = opi_param_surf
+                )), 
+  width = 1)
+ 
+
+
+```
+
+<br>
+
+```{r donnes contexte IPR partie 2}
+
+ width(
+    flextable(
+      aspe_ipr_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+                  annee == params$annee) %>% 
+  dplyr::select(
+                `Profondeur moyenne de la station (en m)` = opi_param_prof,
+                `Largeur moyenne en eau (en m)` = opi_param_lar,
+                `Pente du cours d'eau` = opi_param_pent,
+                `Date de calcul de l'IPR`= opi_date_execution,
+                `Version du SEEE utilisée` = opi_version_script)), 
+  width = 1.3)
+
+```
+
+\newpage
+
+*Sur le graphique a) ci-dessous, plus la valeur d'une métrique de l'IPR est proche du centre du graphique, plus elle est proche d'une situation de référence: elle contribue donc à améliorer la note globale de l'IPR. Le graphique b présente la probabilité de présence sur la station de chaque taxon susceptible d'y être trouvé. Pour chaque taxon la couleur indique s'il était présent ou non lors de l'opération* **`r unique(aspe_mei_ope$ope_id)`**. *La présence lors de l'opération des taxons à forte probabilité de présence contribue à une bonne note IPR*.  
+
+##### [a) Comparaison de l'écart à une situation de référence des métriques de l'IPR]{.underline}
+##### [b) Probabilité de présence des taxons sur la station]{.underline}
+
+```{r graphique radar des metriques}
+
+radar_met <- aspe_ipr_hdf %>% 
+  dplyr:: filter(sta_code_sandre == params$code_station &
+                   annee == params$annee) %>% 
+  dplyr:: select(NER = ner, NEL = nel, NTE = nte, DIT = dit, DIO = dio, DII = dii, DTI = dti) %>% 
+   ggRadar(
+    mapping= aes(),
+          rescale = FALSE, interactive = FALSE, use.label = TRUE, size = 3,
+         legend.position = "none", alpha=0.8, colour = "darkslategray3"
+         ) + 
+  theme_bw() +
+  theme(panel.grid.major = element_line(colour = "grey50"),
+        axis.text.x = element_text(face = 'bold', colour= "black", size = 10))+
+  geom_point(size = 3, shape = 21, fill = "darkslategray3", color="black")
+  
+  
+```
+
+```{r graph proba presence}
+
+proba_pres <- proba_presence %>% 
+  filter(sta_code_sandre == params$code_station &
+           annee == params$annee) %>% 
+  dplyr::mutate(presence = as.factor(case_when(ppi_param_effectif == 0 ~ "Absent",
+                          ppi_param_effectif != 0 ~ "Présent")),
+                ppi_valeur_probabilite = ppi_valeur_probabilite*100) %>% 
+  ggplot(aes(x=ppi_valeur_probabilite, y=reorder(esp_code_alternatif, ppi_valeur_probabilite), fill = presence)) +
+  geom_col(stat = "identity")+
+  theme_bw()+
+  theme(axis.text.x = element_text(size= 9),
+        axis.text.y = element_text(size= 7),
+        legend.title = element_text(size=9),
+        legend.position = "top",
+        legend.key.size = unit(0.5,"line"))+
+  labs(fill= paste0("Présence du taxon (", params$annee, ")"))+
+ # geom_text(aes(label = round(ppi_valeur_probabilite, 4))) +
+  ylab("Taxons")+
+  xlab("Probabilité de présence (en %)")+
+  scale_fill_manual(values = c("Présent"="darkslategray3",
+                               "Absent" = "indianred"))+
+  xlim(c(0,100))
+  #scale_x_continuous(expand = c(0,0.5))
+  
+  
+  
+```
+
+```{r arrange radar et proba presence}
+
+arrange_met <- ggarrange(radar_met, proba_pres, ncol=2, nrow= 1, align = "hv", labels = c("a", "b"))
+
+ggsave(plot = arrange_met, filename = "../images/arrange_met.png", width = 17, height = 15, units = "cm", dpi = 300)
+```
+
+![](../images/arrange_met.png)
+
+## Historique de l'IPR sur la station
+
+##### [Evolution de l'IPR sur la station en fonction des classes de qualité]{.underline}
+
+```{r Evolution IPR}
+
+df <-aspe_ipr_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station) %>% 
+  dplyr::mutate(annee = as.numeric(annee)) %>% 
+  dplyr:: left_join(qualite_ipr, by="cli_libelle") %>% 
+  drop_na(ipr)
+
+
+test<-seq(min(df$annee), max(df$annee), 1)
+
+ipr_evol <- df %>% 
+  ggplot(aes(x= annee,y=ipr, group= 1, fill= cli_libelle)) +
+  geom_rect(data = qualite_ipr, aes(NULL,NULL,ymin=cli_borne_inf, ymax=cli_borne_sup, fill= cli_libelle),
+            xmin= -Inf, xmax= Inf , alpha=0.3, inherit.aes = FALSE) +
+  geom_vline(xintercept=as.numeric(params$annee), color="red")+
+  geom_line(linetype = "longdash", color="grey30")+
+  geom_point(size = 3, shape=21)+
+  theme_bw()+
+  scale_x_continuous(breaks=test, expand = c(0,0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(size=11))+
+  scale_fill_manual(values= c("Très bon" = "green",
+                              "Bon" = "yellowgreen",
+                              "Moyen" = "yellow",
+                              "Médiocre" = "darkorange",
+                              "Mauvais" = "red3"), na.translate = FALSE)+
+  xlab("Années")+
+  ylab("IPR (sans unité)")+
+  labs(fill="Classe")
+```
+```{r ggsave ipr}
+ggsave(plot = ipr_evol, filename = "../images/ipr_evol.png", width = 17, height = 14, units = "cm", dpi = 300)
+```
+
+![](../images/ipr_evol.png)
+
+##### [Evolution des métriques de l'IPR sur la station]{.underline}
+
+```{r evolution des metriques}
+
+met_evol <- aspe_ipr_hdf %>% 
+  dplyr::filter(sta_code_sandre == params$code_station) %>% 
+  dplyr::mutate(annee = as.integer(annee)) %>% 
+  dplyr::select(sta_code_sandre:annee, 
+                NER = ner, NEL = nel, NTE = nte, DIT = dit, DIO = dio, DII = dii, DTI = dti) %>% 
+  drop_na(NER:DTI) %>% 
+  pivot_longer(cols = (NER:DTI),
+               names_to = "metrique", 
+               values_to = "met_value") %>% 
+  ggplot(aes(x=annee, y=met_value))+
+   geom_vline(xintercept=as.numeric(params$annee), color="red")+
+  geom_line(linetype= "dashed")+
+  geom_point(size=1.5)+
+  theme_bw()+
+  xlab("Années")+
+  ylab("Score de la métrique (sans unité)")+
+  facet_wrap(~ metrique)
+  
+               
+  
+```
+```{r}
+ggsave(plot = met_evol, filename = "../images/met_evol.png", width = 17, height = 14, units = "cm", dpi = 300)
+```
+
+![](../images/met_evol.png)
+
+\newpage
+
+# Commentaires 
+
+**[Compléter ici le commentaire]**
+
+Commentateur : [Compléter le nom et poste du commentateur]
+
+\newpage
+
+# Annexes
+
+## Annexe 1 : Signification des codes taxons
+
+<br>
+
+```{r defaut flextable setings pour annexe}
+
+set_flextable_defaults(    # options par défaut de l'affichage des tableaux 
+  font.size = 10, theme_fun = theme_vanilla,
+  padding = 6,
+  background.color = "white",
+  align = "center",
+  big.mark = "",     # pas de virgule pour séparer les milliers 
+  decimal.mark = ",") # virgule comme séparateur décimal 
+```
+
+```{r signification codes taxons}
+
+
+fontsize(
+  autofit(
+  italic(
+  width(
+  flextable(
+    rbind(
+      
+      aspe_mei_ope %>% 
+  dplyr::select(esp_code_alternatif,
+                esp_nom_commun,
+                esp_nom_latin) %>% 
+    unique() %>% 
+    mutate(esp_code_alternatif = as.character(esp_code_alternatif)), 
+  
+  proba_presence %>% 
+  dplyr::filter(sta_code_sandre == params$code_station &
+           annee == params$annee)  %>% 
+  dplyr::select(esp_code_alternatif,
+                esp_nom_commun,
+                esp_nom_latin)) %>% 
+  ungroup() %>% 
+  arrange(esp_code_alternatif) %>% 
+  unique() %>% 
+  rename(`Code taxon` = esp_code_alternatif,
+                `Nom commun` = esp_nom_commun,
+                `Nom latin` = esp_nom_latin)), 
+  
+  width = 2),
+  j= "Nom latin", part= "body")
+  ),
+  size= 9, part= "all"
+  )
+
+
+```
+
+\newpage
+
+## Annexe 2 : Construction et interprétation de l'IPR
+
+*L'IPR représente la qualité globale du peuplement piscicole au niveau d'une station de pêche. Cette qualité globale est déterminée par comparaison du peuplement réel (résultat d'une pêche électrique) avec un peuplement théorique "idéal" correspondant à une situation pas ou peu altérée par l'Homme.* 
+*Le calcul de l'IPR se base sur 7 métriques, décrites ci-dessous.* 
+
+<br> 
+
+```{r metriques IPR explication}
+
+met_ipr_annexe <-read_excel("../raw_data/Metriques_IPR_Annexe.xlsx")
+
+width(flextable(met_ipr_annexe), width = 1.7)
+```
+
+<br>
+
+*Le score final des métriques dépend de la différence en terme probabiliste entre les métriques calculées pour une pêche et celles calculées en situation de référence. Lorsqu'une métrique vaut 0, elle est égale à la métrique calculée en situation de référence. Plus la métrique s'éloigne de 0, plus elle s'éloigne d'une situation de référence.* 
+
+<br>
+
+*La valeur de l'IPR est égale à la somme des 7 métriques. Plus l'IPR augmente, plus le peuplement piscicole s'éloigne d'une situation de référence. Les classes de qualité du peuplement piscicole de "Très bon" à "Mauvais" sont définies comme ci-dessous :* 
+
+##### [Limites des classes de qualité de l'IPR]{.underline}
+
+```{r classes qualite IPR}
+
+width(
+  flextable(qualite_ipr %>% 
+  rename(`Classe de qualité de l'IPR` = cli_libelle,
+         `Score inférieur de l'IPR` = cli_borne_inf,
+         `Score supérieur de l'IPR` = cli_borne_sup)),
+  width = 1.3) 
+
+```
+
+<br>
+
+*Pour plus de détails sur l'IPR et son calcul, se référer à la notice de présentation et d'utilisation de l'IPR produite par le Conseil Supérieur de la pêche : Belliard J. et Roset N. 2006. L’indice poisson rivière (IPR), notice de présentation et d’utilisation.*
+
+*Téléchargeable sur : https://www.documentation.eauetbiodiversite.fr/notice/000000000189952ab454659e95f08507 .*  
