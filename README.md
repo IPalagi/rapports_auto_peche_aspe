@@ -13,6 +13,6 @@ Structure du projet :
 
 - dossier "images" : dossier dans lequel sont sauvegardés les images/cartes/ghraphiques retrouvés dans les rapports de pêche
 - dossier "output" : dossier où sont sauvegardés les rapports de pêche générés
-- dossier "raw_data" : dossier contenant les données brutes utiles au projet (dont tables de base de ASPE, couches .shp des stations des réseaux DCE hors pêches etc.)
+- dossier "raw_data" : dossier contenant les données brutes utiles au projet (dont tables de base de ASPE, couches .shp des stations des réseaux DCE hors pêches etc.) (données brutes non fournies)
 - dossier "scripts" : dossier contenant les fichiers .R necessaires pour générer les rapports (packages nécessaires, importation des données piscicoles, importation des stations de pêche de travail, lancement de la production des rapports)
 - dossier "template" : dossier contenant le fichier .Rmd squelette des rapports de pêche et le fichier .docx de référence pour la mise en page des rapports
